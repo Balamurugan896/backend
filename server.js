@@ -109,7 +109,7 @@ app.post('/api/auth/login', async (req, res) => {
 // Get all users
 app.get('/api/users', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT id, username, full_name, email, role, status FROM master_users');
+    const { rows } = await pool.query('SELECT id, username, full_name, email, role, status FROM users');
     res.json({ success: true, users: rows });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
