@@ -89,22 +89,65 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// Login
+// ─────────────────────────────────────────
+//  LOGIN API
+//  POST /api/auth/login
+// ─────────────────────────────────────────
 app.post('/api/auth/login', async (req, res) => {
-  const { usernameOrEmail, password } = req.body;
-  if (!usernameOrEmail || !password) return res.status(400).json({ success: false, message: 'Missing fields' });
-
   try {
-    const user = await findUser(usernameOrEmail);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    const { username, password } = req.body;
 
-    const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) return res.status(401).json({ success: false, message: 'Invalid password' });
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username and password are required'
+      });
+    }
 
-    const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
-    res.json({ success: true, token });
+    const user = await findUser(username.trim());
+
+    if (!user || user.status !== 'active') {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid username or password'
+      });
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+
+    if (!passwordMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid username or password'
+      });
+    }
+
+    const payload = {
+      id:       user.id,
+      userid:   user.user_id,
+      username: user.username,
+      fullName: user.full_name,
+      email:    user.email,
+      role:     user.role
+    };
+
+    const token = jwt.sign(payload, JWT_SECRET, {
+      expiresIn: JWT_EXPIRES
+    });
+
+    res.json({
+      success: true,
+      message: 'Login successful',
+      token,
+      user: payload
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('Login error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
   }
 });
 
