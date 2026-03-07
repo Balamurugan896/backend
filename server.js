@@ -151,13 +151,32 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Get all users
+// ─────────────────────────────────────────
+//  GET ACTIVE USERS LIST API
+//  GET /api/users
+// ─────────────────────────────────────────
 app.get('/api/users', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT id, username, full_name, email, role, status FROM users');
-    res.json({ success: true, users: rows });
+
+    const [rows] = await db.execute(
+      `SELECT user_id, username, full_name, email, role, status
+       FROM users
+       WHERE status IN ('active', 'inactive')
+       ORDER BY user_id ASC`
+    );
+
+    res.status(200).json({
+      success: true,
+      count: rows.length,
+      data: rows
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('Users List Error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
   }
 });
 
