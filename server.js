@@ -71,21 +71,81 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Register user
-app.post('/api/auth/register', async (req, res) => {
-  const { username, full_name, email, password } = req.body;
-  if (!username || !email || !password) return res.status(400).json({ success: false, message: 'Missing fields' });
+// ─────────────────────────────────────────
+//  USERS
+//  GET  /api/users        — list all
+//  POST /api/auth/register — create user
+//  PUT  /api/users/:id    — update user
+//  DELETE /api/users/:id  — delete user
+//  PUT  /api/users/:id/toggle-status
+// ─────────────────────────────────────────
 
+// ─────────────────────────────────────────
+//  REGISTER API
+//  POST /api/auth/register
+// ─────────────────────────────────────────
+app.post('/api/auth/register', async (req, res) => {
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const result = await pool.query(
-      `INSERT INTO master_users (username, full_name, email, password_hash, role, status)
-       VALUES ($1, $2, $3, $4, 'user', true) RETURNING id, username, email`,
-      [username, full_name, email, hashedPassword]
+    let { user_id, username, full_name, email, password, role } = req.body;
+
+    // Validate required fields
+    if (!user_id || !username || !email || !password || !role) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID, username, email, password and role are required'
+      });
+    }
+
+    user_id  = user_id.trim();
+    username = username.trim();
+    email    = email.trim().toLowerCase();
+
+    const allowedRoles = ['student', 'teacher', 'admin'];
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid role'
+      });
+    }
+
+    // Check duplicate user_id, username or email
+    const [existing] = await db.execute(
+      `SELECT id FROM master_users 
+       WHERE LOWER(user_id) = LOWER(?)  
+          OR LOWER(email) = LOWER(?)`,
+      [user_id, email]
     );
-    res.json({ success: true, user: result.rows[0] });
+
+    if (existing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID or email already exists'
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Insert user
+    await db.execute(
+      `INSERT INTO master_users
+       (user_id, username, full_name, email, role, password_hash)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [user_id, username, full_name || null, email, role, hashedPassword]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'User registered successfully'
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('Register error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
   }
 });
 
@@ -160,7 +220,7 @@ app.get('/api/users', async (req, res) => {
 
     const [rows] = await db.execute(
       `SELECT user_id, username, full_name, email, role, status
-       FROM users
+       FROM master_users
        WHERE status IN ('active', 'inactive')
        ORDER BY user_id ASC`
     );
@@ -180,43 +240,210 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-// Update user
-app.put('/api/users/:id', async (req, res) => {
-  const { id } = req.params;
-  const { full_name, email, role } = req.body;
+// ─────────────────────────────────────────
+//  TOGGLE USER STATUS API
+//  PUT /api/users/:user_id/toggle-status
+// ─────────────────────────────────────────
+app.put('/api/users/:user_id/toggle-status', async (req, res) => {
   try {
-    const result = await pool.query(
-      `UPDATE master_users SET full_name=$1, email=$2, role=$3 WHERE id=$4 RETURNING id, username, full_name, email, role`,
-      [full_name, email, role, id]
+    const { user_id } = req.params;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+
+    // Check if user exists
+    const [users] = await db.execute(
+      `SELECT status FROM master_users WHERE user_id = ?`,
+      [user_id]
     );
-    res.json({ success: true, user: result.rows[0] });
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const currentStatus = users[0].status;
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+
+    // Update status
+    await db.execute(
+      `UPDATE master_users SET status = ? WHERE user_id = ?`,
+      [newStatus, user_id]
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `User status updated to ${newStatus}`,
+      data: {
+        user_id,
+        status: newStatus
+      }
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('Toggle Status Error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
   }
 });
 
-// Delete user
-app.delete('/api/users/:id', async (req, res) => {
-  const { id } = req.params;
+// ─────────────────────────────────────────
+//  UPDATE USER API
+//  PUT /api/users/:user_id
+// ─────────────────────────────────────────
+app.put('/api/users/:user_id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM master_users WHERE id=$1', [id]);
-    res.json({ success: true, message: 'User deleted' });
+    const { user_id } = req.params;
+    let { username, full_name, email, role, password } = req.body;
+
+    // Required fields (EXCEPT user_id & password)
+    if (!username || !email || !role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username, email and role are required'
+      });
+    }
+
+    username = username.trim();
+    email = email.trim().toLowerCase();
+
+    const allowedRoles = ['student', 'teacher', 'admin'];
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid role'
+      });
+    }
+
+    // Check duplicate email (except current user)
+    const [existing] = await db.execute(
+      `SELECT id FROM master_users 
+       WHERE LOWER(email) = LOWER(?) 
+         AND user_id != ?`,
+      [email, user_id]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email already exists'
+      });
+    }
+
+    // If password provided → hash it
+    let query;
+    let values;
+
+    if (password && password.trim() !== '') {
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      query = `
+        UPDATE master_users
+        SET username = ?,
+            full_name = ?,
+            email = ?,
+            role = ?,
+            password_hash = ?,
+            status = 'active'
+        WHERE user_id = ?
+      `;
+
+      values = [
+        username,
+        full_name || null,
+        email,
+        role,
+        hashedPassword,
+        user_id
+      ];
+
+    } else {
+      // No password update
+      query = `
+        UPDATE master_users
+        SET username = ?,
+            full_name = ?,
+            email = ?,
+            role = ?,
+            status = 'active'
+        WHERE user_id = ?
+      `;
+
+      values = [
+        username,
+        full_name || null,
+        email,
+        role,
+        user_id
+      ];
+    }
+
+    const [result] = await db.execute(query, values);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'User updated successfully'
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('Update error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
   }
 });
 
-// Toggle user status
-app.put('/api/users/:id/toggle-status', async (req, res) => {
-  const { id } = req.params;
+// ─────────────────────────────────────────
+//  DELETE USER API (Soft Delete)
+//  DELETE /api/users/:user_id
+// ─────────────────────────────────────────
+
+app.delete('/api/users/:user_id', async (req, res) => {
   try {
-    const result = await pool.query(
-      `UPDATE master_users SET status = NOT status WHERE id=$1 RETURNING id, username, status`,
-      [id]
+    const { user_id } = req.params;
+
+    const [result] = await db.execute(
+      `UPDATE master_users 
+       SET status = 'delete'
+       WHERE user_id = ?`,
+      [user_id]
     );
-    res.json({ success: true, user: result.rows[0] });
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'User deactivated successfully'
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('Soft Delete Error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
   }
 });
 
