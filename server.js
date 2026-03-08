@@ -424,11 +424,11 @@ app.delete('/api/users/:user_id', async (req, res) => {
     const result = await pool.query(
       `UPDATE master_users 
        SET status = 'deleted'
-       WHERE user_id = ?`,
+       WHERE user_id = $1`,
       [user_id]
     );
 
-    if (result.affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
