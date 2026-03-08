@@ -244,8 +244,8 @@ app.get('/api/users', async (req, res) => {
 });
 
 // ─────────────────────────────────────────
-//  TOGGLE USER STATUS API
-//  PUT /api/users/:user_id/toggle-status
+// TOGGLE USER STATUS API
+// PUT /api/users/:user_id/toggle-status
 // ─────────────────────────────────────────
 app.put('/api/users/:user_id/toggle-status', async (req, res) => {
   try {
@@ -259,24 +259,24 @@ app.put('/api/users/:user_id/toggle-status', async (req, res) => {
     }
 
     // Check if user exists
-    const [users] = await db.execute(
-      `SELECT status FROM master_users WHERE user_id = ?`,
+    const result = await pool.query(
+      `SELECT status FROM master_users WHERE user_id = $1`,
       [user_id]
     );
 
-    if (users.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
 
-    const currentStatus = users[0].status;
+    const currentStatus = result.rows[0].status;
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
 
     // Update status
-    await db.execute(
-      `UPDATE master_users SET status = ? WHERE user_id = ?`,
+    await pool.query(
+      `UPDATE master_users SET status = $1 WHERE user_id = $2`,
       [newStatus, user_id]
     );
 
@@ -293,21 +293,20 @@ app.put('/api/users/:user_id/toggle-status', async (req, res) => {
     console.error('Toggle Status Error:', err);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: err.message
     });
   }
 });
 
 // ─────────────────────────────────────────
-//  UPDATE USER API
-//  PUT /api/users/:user_id
+// UPDATE USER API
+// PUT /api/users/:user_id
 // ─────────────────────────────────────────
 app.put('/api/users/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
     let { username, full_name, email, role, password } = req.body;
 
-    // Required fields (EXCEPT user_id & password)
     if (!username || !email || !role) {
       return res.status(400).json({
         success: false,
@@ -327,37 +326,37 @@ app.put('/api/users/:user_id', async (req, res) => {
       });
     }
 
-    // Check duplicate email (except current user)
-    const [existing] = await db.execute(
-      `SELECT id FROM master_users 
-       WHERE LOWER(email) = LOWER(?) 
-         AND user_id != ?`,
+    // Check duplicate email
+    const checkEmail = await pool.query(
+      `SELECT user_id FROM master_users
+       WHERE LOWER(email) = LOWER($1)
+       AND user_id != $2`,
       [email, user_id]
     );
 
-    if (existing.length > 0) {
+    if (checkEmail.rows.length > 0) {
       return res.status(400).json({
         success: false,
         message: 'Email already exists'
       });
     }
 
-    // If password provided → hash it
     let query;
     let values;
 
     if (password && password.trim() !== '') {
+
       const hashedPassword = await bcrypt.hash(password, 10);
 
       query = `
         UPDATE master_users
-        SET username = ?,
-            full_name = ?,
-            email = ?,
-            role = ?,
-            password_hash = ?,
+        SET username = $1,
+            full_name = $2,
+            email = $3,
+            role = $4,
+            password_hash = $5,
             status = 'active'
-        WHERE user_id = ?
+        WHERE user_id = $6
       `;
 
       values = [
@@ -370,15 +369,15 @@ app.put('/api/users/:user_id', async (req, res) => {
       ];
 
     } else {
-      // No password update
+
       query = `
         UPDATE master_users
-        SET username = ?,
-            full_name = ?,
-            email = ?,
-            role = ?,
+        SET username = $1,
+            full_name = $2,
+            email = $3,
+            role = $4,
             status = 'active'
-        WHERE user_id = ?
+        WHERE user_id = $5
       `;
 
       values = [
@@ -390,9 +389,9 @@ app.put('/api/users/:user_id', async (req, res) => {
       ];
     }
 
-    const [result] = await db.execute(query, values);
+    const result = await pool.query(query, values);
 
-    if (result.affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
@@ -408,7 +407,7 @@ app.put('/api/users/:user_id', async (req, res) => {
     console.error('Update error:', err);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: err.message
     });
   }
 });
@@ -422,9 +421,9 @@ app.delete('/api/users/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
 
-    const [result] = await db.execute(
+    const result = await pool.query(
       `UPDATE master_users 
-       SET status = 'delete'
+       SET status = 'deleted'
        WHERE user_id = ?`,
       [user_id]
     );
