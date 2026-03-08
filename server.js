@@ -36,7 +36,7 @@ app.use(express.json());
 async function findUser(usernameOrEmail) {
   const { rows } = await pool.query(
     `SELECT id, username, full_name, email, role, password_hash, status
-     FROM users
+     FROM master_users
      WHERE LOWER(username) = LOWER($1)
         OR LOWER(email) = LOWER($2)
      LIMIT 1`,
