@@ -81,8 +81,8 @@ app.get('/api/health', async (req, res) => {
 // ─────────────────────────────────────────
 
 // ─────────────────────────────────────────
-//  REGISTER API
-//  POST /api/auth/register
+// REGISTER API
+// POST /api/auth/register
 // ─────────────────────────────────────────
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -109,15 +109,15 @@ app.post('/api/auth/register', async (req, res) => {
       });
     }
 
-    // Check duplicate user_id, username or email
-    const [existing] = await db.execute(
-      `SELECT id FROM master_users 
-       WHERE LOWER(user_id) = LOWER(?)  
-          OR LOWER(email) = LOWER(?)`,
+    // Check duplicate user_id or email
+    const existing = await pool.query(
+      `SELECT id FROM master_users
+       WHERE LOWER(user_id) = LOWER($1)
+          OR LOWER(email) = LOWER($2)`,
       [user_id, email]
     );
 
-    if (existing.length > 0) {
+    if (existing.rows.length > 0) {
       return res.status(400).json({
         success: false,
         message: 'User ID or email already exists'
@@ -128,10 +128,10 @@ app.post('/api/auth/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Insert user
-    await db.execute(
+    await pool.query(
       `INSERT INTO master_users
        (user_id, username, full_name, email, role, password_hash)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6)`,
       [user_id, username, full_name || null, email, role, hashedPassword]
     );
 
@@ -148,6 +148,7 @@ app.post('/api/auth/register', async (req, res) => {
     });
   }
 });
+
 
 // ─────────────────────────────────────────
 //  LOGIN API
