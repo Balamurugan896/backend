@@ -219,7 +219,7 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
 
-    const [rows] = await db.execute(
+    const [rows] = await pool.query(
       `SELECT user_id, username, full_name, email, role, status
        FROM master_users
        WHERE status IN ('active', 'inactive')
