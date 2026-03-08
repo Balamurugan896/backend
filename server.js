@@ -226,6 +226,8 @@ app.get('/api/users', async (req, res) => {
        ORDER BY user_id ASC`
     );
 
+    const rows = result.rows;
+    
     res.status(200).json({
       success: true,
       count: rows.length,
