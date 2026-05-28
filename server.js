@@ -3,7 +3,7 @@ const express = require('express');
 const cors    = require('cors');
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
-const mysql   = require('mysql2/promise');
+const mysql = require('mysql2');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -12,18 +12,16 @@ const PORT = process.env.PORT || 3000;
 //  DATABASE CONNECTION (Aiven MySQL)
 // ─────────────────────────────────────────
 const pool = mysql.createPool({
-  host:     process.env.DB_HOST,
-  port:     parseInt(process.env.DB_PORT) || 16587,
-  user:     process.env.DB_USER,
+  host: process.env.DB_HOST,
+  port: parseInt(process.env.DB_PORT) || 16587,
+  user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-
   ssl: { rejectUnauthorized: false },
-
   waitForConnections: true,
   connectionLimit: 10,
-  connectTimeout:  20000,
-});
+  connectTimeout: 20000,
+}).promise();
 
 module.exports = pool;
 
