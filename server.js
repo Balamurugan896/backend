@@ -249,15 +249,13 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
 
-    const result = await pool.query(
+    const [rows] = await pool.query(
       `SELECT user_id, username, full_name, email, role, status
        FROM master_users
        WHERE status IN ('active', 'inactive')
        ORDER BY user_id ASC`
     );
 
-    const rows = result.rows;
-    
     res.status(200).json({
       success: true,
       count: rows.length,
